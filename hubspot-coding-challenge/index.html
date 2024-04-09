@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hubspot test</title>
+  </head>
+  <body>
+    <!-- <div id="root"></div> -->
+    <!-- <script type="module" src="/src/main.tsx"></script> -->
+    <script>
+      const API_KEY = '4fde4dc81a542310b11d97e41890';
+      const DATA_API = `https://candidate.hubteam.com/candidateTest/v3/problem/dataset?userKey=${API_KEY}`;
+      const RESULT_API = `https://candidate.hubteam.com/candidateTest/v3/problem/result?userKey=${API_KEY}`;
+
+      const getPartnerAvailability = async function() {
+        const partnersResponse = await fetch(DATA_API)
+        return partnersResponse.json();
+      }
+
+      const getPartnersByCountry = (partners) => {
+        return partners.reduce((acc, partner) => {
+          if (partner.country in acc) {
+            acc[partner.country].push(partner);
+          } else {
+            acc[partner.country] = [partner];
+          }
+          return acc;
+        }, {})
+      }
+
+      // return iso8601string | null
+      const getOptimalDateForCountry = (countryPartners) => {
+        const consecutiveDatesByFrequency = {};
+        // tabulate available compatible dates
+        countryPartners.forEach(partner => {
+          const { availableDates } = partner;
+          for (let i = 0; i < availableDates.length; i++) {
+            const date = availableDates[i];
+            const nextDate = availableDates[i + 1];
+            const partnerHasDateAvailable = areDatesSequential(date, nextDate);
+            if (partnerHasDateAvailable) {
+              if (date in consecutiveDatesByFrequency) {
+                consecutiveDatesByFrequency[date]++;
+              } else {
+                consecutiveDatesByFrequency[date] = 1;
+              }
+            }
+          }
+        });
+        const consectiveDatesByFrequencyEntries = Object.entries(consecutiveDatesByFrequency)
+        // if there are no two days in a row when any partners can make it, return null
+        if (consectiveDatesByFrequencyEntries.every(([_, freq]) => freq === 0)) {
+          return null;
+        }
+        const sortedDatesByFrequency = consectiveDatesByFrequencyEntries.sort(([firstDate, firstCount], [secondDate, secondCount]) => {
+          // for edge case of two dates with same freq. return earlier date
+          if (secondCount - firstCount === 0) {
+            return Date.parse(firstDate) - Date.parse(secondDate);
+          }
+          return secondCount - firstCount;
+        });
+        const [optimalDate] = sortedDatesByFrequency[0];
+        return optimalDate;
+      }
+
+      // return structure: { [country]: iso8601DateString | null }
+      const getOptimalDateByCountry = (partnersByCountry) => {
+        return Object.entries(partnersByCountry).reduce((acc, [country, partners]) => {
+          const optimalDate = getOptimalDateForCountry(partners);
+          acc[country] = optimalDate;
+          return acc;
+        }, {});
+      }
+
+      const areDatesSequential = (d1, d2) => {
+        if (typeof d1 !== 'string' || typeof d2 !== 'string') return false;
+        return Date.parse(d2) - Date.parse(d1) === 86400000;
+      }
+
+      const getPartnersForDate = (partners, date) => {
+        return partners.filter(partner => {
+          const { availableDates } = partner;
+          const dateIndex = availableDates.indexOf(date);
+          return areDatesSequential(availableDates[dateIndex], availableDates[dateIndex + 1]);
+        })
+      }
+
+      const getPartnersThatCanMakeOptimalDateByCountry = (partnersByCountry, optimalDateByCountry) => {
+        return Object.entries(optimalDateByCountry).reduce((acc, [country, optimalDate]) => {
+          const countryPartners = partnersByCountry[country];
+          const partnersThatCanMakeOptimalDate = optimalDate === null ? [] : getPartnersForDate(countryPartners, optimalDate);
+          acc[country] = partnersThatCanMakeOptimalDate;
+          return acc;
+        }, {})
+      }
+
+      const organizeEventPayload = (optimalDateByCountry, partnersThatCanMakeOptimalDateByCountry) => {
+        const countries = Object.entries(partnersThatCanMakeOptimalDateByCountry).reduce((acc, [country, partners]) => {
+          const countryAttendees = {
+            attendeeCount: 0,
+            attendees: [],
+            name: country,
+            startDate: optimalDateByCountry[country]
+          };
+          partners.forEach(partner => {
+            countryAttendees.attendeeCount++;
+            countryAttendees.attendees.push(partner.email);
+          })
+          acc.push(countryAttendees);
+          return acc;
+        }, [])
+        const payload = { countries };
+        return payload;
+      }
+
+      const sendResults = async function(results) {
+        const res = await fetch(RESULT_API, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(results)
+        });
+        return res.json();
+      }
+
+      const getEventDates = async function() {
+        const partners = (await getPartnerAvailability())?.partners ?? [];
+        const partnersByCountry = getPartnersByCountry(partners);
+        const optimalDateByCountry = getOptimalDateByCountry(partnersByCountry);
+        const partnersThatCanMakeOptimalDateByCountry = getPartnersThatCanMakeOptimalDateByCountry(partnersByCountry, optimalDateByCountry);
+        const payload = organizeEventPayload(optimalDateByCountry, partnersThatCanMakeOptimalDateByCountry);
+
+        console.log(await sendResults(payload))
+      }
+
+      getEventDates();
+    </script>
+  </body>
+</html>

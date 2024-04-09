@@ -1,0 +1,28 @@
+-- You’re given a transactions table structured:
+-- Create table transactions (
+--     amount integer not null,
+--     date date not null
+-- )
+-- Assume that rows have transactions only from the same year. If these transaction records refer to a bank account and a user is charged $5 per month for months where there aren’t at least 3 negative transaction amounts (which represent payments) totaling <=-$100, write a SQL query to get the year-end balance.
+
+
+-- Reasoning:
+-- 1. under the assumption all dates are from the same year (but there's no guarantee every month is represented), get months without charges (using CTE for readability) by:
+--    a: filtering for payments (negative amounts)
+--    b: grouping into months
+--    c: filtering groups of months where there are sufficient payment amounts (<=-100) and sufficient payments quantities (>=3)
+-- 2. using sql/subquery arithmetic, subtract from the total year-end balance the number of months with charges
+
+-- CTE to get months without holding charges
+WITH months_with_no_charge AS (
+    SELECT EXTRACT(MONTH FROM date) mo
+    FROM transactions
+    WHERE amount < 0
+    GROUP BY mo
+    HAVING SUM(amount) <= -100 AND COUNT(amount) >= 3
+)
+-- subtract from the annual balance the $5 monthly fees for
+-- applicable months of the year
+SELECT
+    (SELECT SUM(amount) FROM transactions)
+  - ((12 - (SELECT COUNT(mo) FROM months_with_no_charge)) * 5) AS balance
