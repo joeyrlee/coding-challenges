@@ -1,0 +1,2 @@
+# What
+The dreaded coding challenge! A non-comprehensive list of coding challenges I've encountered while job-searching, I like to keep these for reference, occasional review, and advertising as code samples to potential employers as 100% of code I've written professionally is closed-source and so unfortunately only useful for my CV/resume.
