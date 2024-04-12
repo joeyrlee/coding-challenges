@@ -1,3 +1,4 @@
+// O(bracket_string) space and time
 function solution(bracket_string) {
   const openingBracketStack = [];
   const closeToOpenBracket = { ')': '(', ']': '[', '}': '{' };
