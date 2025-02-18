@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import './App.css'
 import './normalize.css'
 
-const { Fragment, useState } = React;
+const { memo, useCallback, useState } = React;
 
 // Implement a feature to allow item selection with the following requirements:
 // 1. Clicking an item selects/unselects it.
@@ -14,48 +14,62 @@ const { Fragment, useState } = React;
 //
 // Feel free to change the component structure at will.
 
-const List = ({ items }) => {
-  // track selected items using an object for efficient reads, updates, and deletes of items
-  // key-value store structured {[itemName: string]: {name: string; color: string}}
-  const [selectedItemsByName, setSelectedItems] = useState({});
-  
-  const handleSelectItem = item => {
-  	setSelectedItems(prevItems => {
-    	const updatedItems = {...prevItems};
-    	if (item.name in updatedItems) {
-      	delete updatedItems[item.name];
-      } else {
-	      updatedItems[item.name] = item;
-      }
-      return updatedItems;
-    });
+const ignoreEnterKey = (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
   }
+}
+
+const ListItem = memo(({ color, isSelected, name, selectItem }) => (
+  <button
+    aria-checked={isSelected}
+    className={`List__item List__item--${color}` + (isSelected ? ' List__item--selected' : '')}
+    onClick={() => selectItem(name)}
+    // more accurately emulate checkbox keyboard controls by NOT checking checkboxes on enter key press
+    onKeyDown={ignoreEnterKey}
+    role="checkbox"
+  >
+    {name}
+  </button>
+))
+
+const List = ({ items }) => {
+  const [selectedItemNames, setSelectedItemNames] = useState(new Set()); // Set<string>
   
+  // (itemName: string): Set<string>
+  const selectItem = useCallback(itemName => {
+    return setSelectedItemNames(prevItemNames => {
+      const newItemNames = new Set(prevItemNames);
+      if (newItemNames.has(itemName)) {
+        newItemNames.delete(itemName)
+      } else {
+        newItemNames.add(itemName);
+      }
+      return newItemNames;
+    })
+  }, [])
+
   return (
-    <Fragment>
-      <h1>Items</h1>
-      <h2>Selected Items:</h2>
-      <ul>
-        {Object.values(selectedItemsByName).map(item => (
-        <li key={item.name} className={`List__selected-item`}>
-          <span className={`List__item--${item.color}`}>{item.name}</span>
-        </li>
-        ))}
+    <>
+      <h1>Selected items:</h1>
+      <ul aria-live="polite">
+        {[...selectedItemNames].map(selectedItemName => 
+        	<li key={selectedItemName}>{selectedItemName}</li>
+        )}
       </ul>
-      <h2>Items available to select:</h2>
-      <ul className="List">
+      <ul className="List" role="listbox" aria-label="Selection List">
         {items.map(item => (
-          <li
+          <ListItem
+            color={item.color}
+            isSelected={selectedItemNames.has(item.name)}
             key={item.name}
-            className={`List__item ${item.name in selectedItemsByName ? 'List__item__selected' : ''} List__item--${item.color}`}
-            onClick={() => handleSelectItem(item)}
-          >
-            <span>{item.name}</span>
-          </li>
+            name={item.name}
+            selectItem={selectItem}
+          />
         ))}
       </ul>
-    </Fragment>
-  );
+    </>
+	);
 };
 
 // ---------------------------------------
